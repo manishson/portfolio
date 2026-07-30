@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://manishson.github.io/portfolio/sitemap.xml
