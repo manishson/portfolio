@@ -357,6 +357,30 @@ button { border: none; background: none; font-family: inherit; cursor: pointer; 
 .pulse { animation: pulse-scale 2s ease-in-out infinite; }
 @keyframes pulse-scale { 0%,100% { box-shadow: 0 0 0 0 rgba(34,197,94,0.4); } 50% { box-shadow: 0 0 0 6px rgba(34,197,94,0); } }
 
+/* ========== SCROLL-DRIVEN 3D TILT (progressive enhancement) ==========
+   Ties an entrance rotation to scroll position using the native CSS
+   scroll-timeline API — no JS scroll listener involved, so this can't
+   reintroduce the input lag Lenis caused. Uses the standalone `rotate`
+   property (not `transform`) so it never collides with .reveal's own
+   translateY transition, or with the mouse-driven inline `transform`
+   already used on .project-card for the hover tilt. Browsers without
+   support simply skip this block and keep the existing .reveal fade. */
+@supports (animation-timeline: view()) {
+  .project-card, .about-card, .timeline-card, .edu-card {
+    perspective: 1000px;
+    animation: scrollTiltIn linear both;
+    animation-timeline: view();
+    animation-range: entry 0% entry 60%;
+  }
+  @keyframes scrollTiltIn {
+    from { rotate: x -14deg; }
+    to   { rotate: x 0deg; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .project-card, .about-card, .timeline-card, .edu-card { animation: none; }
+  }
+}
+
 /* ========== SECTIONS ========== */
 .section { padding: 6rem 0; position: relative; z-index: 1; }
 .section-alt { background: var(--bg-2); }
