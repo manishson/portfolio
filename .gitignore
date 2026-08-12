@@ -1,0 +1,10 @@
+# Cloudflare Wrangler local cache/build output — not part of the site
+.wrangler/
+
+# Debug artifact from checking Gemini's model list during setup — not needed
+# in the repo (safe to delete locally too)
+models.json
+
+# OS/editor cruft
+.DS_Store
+Thumbs.db

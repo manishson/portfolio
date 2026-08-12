@@ -45,7 +45,9 @@
     } else {
       setTimeout(() => {
         overlay.classList.add('loader-hidden');
-        document.body.style.overflow = '';
+        // Scroll stays locked here — the gateway screen (chat vs portfolio)
+        // takes over next and is responsible for unlocking it once the
+        // visitor makes a choice.
         sessionStorage.setItem('portfolioLoaderShown', '1');
         window.dispatchEvent(new Event('loaderDone'));
         setTimeout(() => { overlay.style.display = 'none'; }, 650);
@@ -53,6 +55,450 @@
     }
   }
   requestAnimationFrame(tick);
+})();
+
+// ========== GATEWAY: chat vs portfolio ==========
+(function() {
+  const gateway = document.getElementById('gatewayOverlay');
+  const chatPanel = document.getElementById('chatPanel');
+  const chatFab = document.getElementById('chatFab');
+  if (!gateway || !chatPanel) return;
+
+  const chatBtn = document.getElementById('gatewayChatBtn');
+  const portfolioBtn = document.getElementById('gatewayPortfolioBtn');
+  const chatCloseBtn = document.getElementById('chatCloseBtn');
+  const gatewayReopenBtn = document.getElementById('gatewayReopenBtn');
+
+  function lockScroll() { document.body.style.overflow = 'hidden'; }
+  function unlockScroll() { document.body.style.overflow = ''; }
+
+  // The floating bottom-right button is a single toggle that's always
+  // visible once the loader is done: it shows a "webpage" icon while in
+  // chat (click → portfolio) and a "chat" icon while in the portfolio
+  // (click → chat). CSS reads the .mode-chat class to swap icons.
+  function showFab() { if (chatFab) chatFab.classList.add('chat-fab-visible'); }
+  function hideFab() { if (chatFab) chatFab.classList.remove('chat-fab-visible'); }
+  function setFabMode(mode) { if (chatFab) chatFab.classList.toggle('mode-chat', mode === 'chat'); }
+
+  function hideGateway() {
+    gateway.classList.remove('gateway-visible');
+    gateway.classList.add('gateway-hidden');
+    setTimeout(() => { gateway.style.display = 'none'; }, 650);
+  }
+
+  // Brings the two-card "chat or portfolio?" screen back on demand — used
+  // only by the nav's "choose mode again" button now, since the default
+  // flow goes straight into chat after the loader.
+  function revealGateway() {
+    gateway.style.display = 'flex';
+    void gateway.offsetWidth; // force reflow so the fade-in transition plays
+    gateway.classList.remove('gateway-hidden');
+    lockScroll();
+    hideFab();
+  }
+
+  function hideChat() {
+    chatPanel.classList.remove('chat-visible');
+    // Cut off any bot reply still being read aloud once chat is dismissed.
+    if (window.stopPortfolioChatSpeech) window.stopPortfolioChatSpeech();
+  }
+
+  function enterPortfolio() {
+    sessionStorage.setItem('portfolioGatewayChoice', 'portfolio');
+    hideGateway();
+    hideChat();
+    unlockScroll();
+    setFabMode('portfolio');
+    showFab();
+  }
+
+  function enterChat() {
+    sessionStorage.setItem('portfolioGatewayChoice', 'chat');
+    hideGateway();
+    chatPanel.classList.add('chat-visible');
+    lockScroll();
+    setFabMode('chat');
+    showFab();
+    if (window.initPortfolioChat) window.initPortfolioChat();
+    setTimeout(() => {
+      const input = document.getElementById('chatInput');
+      if (input) input.focus();
+    }, 400);
+  }
+
+  function backToGateway() {
+    hideChat();
+    revealGateway();
+  }
+
+  if (chatBtn) chatBtn.addEventListener('click', enterChat);
+  if (portfolioBtn) portfolioBtn.addEventListener('click', enterPortfolio);
+  // Closing chat (X or Escape) goes straight to the portfolio — the bottom-
+  // right glass fab and the nav's mode button remain available to get back.
+  if (chatCloseBtn) chatCloseBtn.addEventListener('click', enterPortfolio);
+  if (chatFab) {
+    chatFab.addEventListener('click', () => {
+      if (chatPanel.classList.contains('chat-visible')) enterPortfolio();
+      else enterChat();
+    });
+  }
+  // Lets visitors jump back to the "chat or portfolio?" choice screen at any
+  // time from the nav, whichever mode they're currently in.
+  if (gatewayReopenBtn) gatewayReopenBtn.addEventListener('click', backToGateway);
+
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape' && chatPanel.classList.contains('chat-visible')) {
+      enterPortfolio();
+    }
+  });
+
+  // Default flow: after the loader, open straight into chat (no selection
+  // screen). The two-card gateway is still reachable any time via the nav's
+  // "choose mode" button, which calls backToGateway().
+  window.addEventListener('loaderDone', () => {
+    gateway.style.display = 'none';
+    enterChat();
+  });
+})();
+
+// ========== CHATBOT (Ask about Manish) ==========
+(function() {
+  // Set this to your deployed Cloudflare Worker URL (see chat-worker.js at the
+  // repo root for the proxy code + deployment steps). Until it's set to a real
+  // endpoint, the chat will show a friendly fallback message instead of erroring.
+  const CHAT_API_URL = 'https://manish-portfolio-chat.manishson-portfolio.workers.dev/chat';
+
+  const messagesEl = document.getElementById('chatMessages');
+  const form = document.getElementById('chatForm');
+  const input = document.getElementById('chatInput');
+  const suggestions = document.getElementById('chatSuggestions');
+  const hudEl = document.getElementById('chatHud');
+  const muteBtn = document.getElementById('chatMuteBtn');
+  const chatPanelEl = document.getElementById('chatPanel');
+  if (!messagesEl || !form || !input) return;
+
+  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  let history = [];
+  let initialized = false;
+  let sending = false;
+
+  // ---------- Sound: tiny opt-in blips via the Web Audio API (no audio
+  // files to load). Off by default; the choice persists across visits.
+  const SOUND_KEY = 'portfolioChatSoundOn';
+  let soundOn = localStorage.getItem(SOUND_KEY) === '1';
+  let audioCtx = null;
+
+  function applyMuteUI() {
+    if (!muteBtn) return;
+    muteBtn.classList.toggle('sound-on', soundOn);
+    muteBtn.setAttribute('aria-pressed', soundOn ? 'true' : 'false');
+  }
+  applyMuteUI();
+
+  function playBlip(freq, duration) {
+    if (!soundOn) return;
+    try {
+      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = freq;
+      gain.gain.setValueAtTime(0.0001, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.12, audioCtx.currentTime + 0.01);
+      gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + duration);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start();
+      osc.stop(audioCtx.currentTime + duration);
+    } catch (e) { /* Web Audio unavailable/blocked — fail silently */ }
+  }
+
+  // ---------- Text-to-speech: reads bot replies aloud using the browser's
+  // built-in speech synthesis (no API, no audio files). Gated by the same
+  // sound toggle as the blips, so there's one control for "sound" overall.
+  function stopSpeaking() {
+    if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+    if (window.setMascotSpeaking) window.setMascotSpeaking(false);
+  }
+
+  function speak(text) {
+    if (!soundOn || !('speechSynthesis' in window) || !text) return;
+    try {
+      window.speechSynthesis.cancel(); // don't overlap with a previous reply
+      const utter = new SpeechSynthesisUtterance(text);
+      utter.rate = 1.02;
+      utter.pitch = 1;
+      utter.volume = 1;
+      utter.onstart = function() { if (window.setMascotSpeaking) window.setMascotSpeaking(true); };
+      utter.onend = function() { if (window.setMascotSpeaking) window.setMascotSpeaking(false); };
+      utter.onerror = function() { if (window.setMascotSpeaking) window.setMascotSpeaking(false); };
+      window.speechSynthesis.speak(utter);
+    } catch (e) { /* speech synthesis unavailable — ignore */ }
+  }
+
+  if (muteBtn) {
+    muteBtn.addEventListener('click', function() {
+      soundOn = !soundOn;
+      localStorage.setItem(SOUND_KEY, soundOn ? '1' : '0');
+      applyMuteUI();
+      if (soundOn) playBlip(660, 0.12); // confirmation blip when turning on
+      else stopSpeaking(); // muting mid-sentence should cut the voice immediately
+    });
+  }
+
+  // ---------- HUD: live "MODEL / LATENCY" readout in the header.
+  function setHud(text) { if (hudEl) hudEl.textContent = text; }
+
+  window.initPortfolioChat = function() {
+    if (initialized) return;
+    initialized = true;
+    addMessage('bot', "Hey! I'm an AI assistant briefed on Manish's experience, projects, and skills. Ask me anything, or tap a suggestion below.");
+
+    // One-shot "power on" flicker — only the first time chat opens each
+    // session, so repeat opens later don't replay it.
+    if (chatPanelEl && !reduceMotion && !sessionStorage.getItem('portfolioChatBooted')) {
+      sessionStorage.setItem('portfolioChatBooted', '1');
+      chatPanelEl.classList.add('boot-flicker');
+      setTimeout(function() { chatPanelEl.classList.remove('boot-flicker'); }, 850);
+    }
+  };
+
+  // Lets other parts of the app (e.g. leaving chat for the portfolio) cut
+  // off any in-progress narration immediately.
+  window.stopPortfolioChatSpeech = stopSpeaking;
+
+  // ---------- Mascot: eyes that track the cursor, a mouth that "talks"
+  // while the bot is composing a reply, and a tap-for-a-fun-fact easter egg.
+  (function initMascot() {
+    const mascot = document.getElementById('chatMascot');
+    const pupils = mascot ? mascot.querySelectorAll('.mascot-pupil') : [];
+    const bubble = document.getElementById('chatMascotBubble');
+    if (!mascot) return;
+
+    const funFacts = [
+      "Fun fact: Sentinel Bot handles thousands of daily requests at ~95% intent accuracy.",
+      "Manish has shipped computer vision models for real-time weapon & face detection.",
+      "92% accuracy classifying 10,000+ legal documents — that was the Property Insights Automator.",
+      "Manish builds MCP tools that let LLMs talk to 50+ enterprise services.",
+      "5+ years across LLMs, computer vision, NLP, and MLOps.",
+      "Ask me about LangGraph, RAG, or Manish's AWS/GCP/Azure work!"
+    ];
+    let bubbleTimer = null;
+
+    function setBubble(text, autoHideMs) {
+      if (!bubble) return;
+      bubble.textContent = text;
+      bubble.classList.remove('mascot-bubble-hidden');
+      if (bubbleTimer) clearTimeout(bubbleTimer);
+      if (autoHideMs) {
+        bubbleTimer = setTimeout(() => bubble.classList.add('mascot-bubble-hidden'), autoHideMs);
+      }
+    }
+
+    // Greeting bubble fades on its own after a few seconds.
+    setBubble(bubble ? bubble.textContent : '', 6000);
+
+    // Eyes gently follow the pointer anywhere in the chat panel.
+    const panelEl = document.getElementById('chatPanel');
+    if (!panelEl) return;
+    panelEl.addEventListener('mousemove', function(e) {
+      const rect = mascot.getBoundingClientRect();
+      const cx = rect.left + rect.width / 2;
+      const cy = rect.top + rect.height / 2;
+      const dx = Math.max(-1, Math.min(1, (e.clientX - cx) / 160));
+      const dy = Math.max(-1, Math.min(1, (e.clientY - cy) / 160));
+      pupils.forEach(function(p) {
+        p.style.transform = 'translate(' + (dx * 3.5).toFixed(1) + 'px,' + (dy * 3).toFixed(1) + 'px)';
+      });
+    });
+
+    function playFunFact() {
+      mascot.classList.remove('mascot-bounce');
+      void mascot.offsetWidth; // restart animation
+      mascot.classList.add('mascot-bounce');
+      // The bounce animation runs once (0.6s) — drop the class after so the
+      // element falls back to its normal idle-bob animation instead of
+      // freezing on the (now finished) bounce keyframes forever.
+      setTimeout(function() { mascot.classList.remove('mascot-bounce'); }, 650);
+      setBubble(funFacts[Math.floor(Math.random() * funFacts.length)], 4000);
+    }
+
+    mascot.addEventListener('click', playFunFact);
+    mascot.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); playFunFact(); }
+    });
+
+    window.setMascotTalking = function(isTalking) {
+      mascot.classList.toggle('talking', !!isTalking);
+    };
+    // Separate from "talking" (which also spins the thinking ring during the
+    // network wait) — "speaking" just flaps the mouth while text-to-speech
+    // is actually reading a reply out loud.
+    window.setMascotSpeaking = function(isSpeaking) {
+      mascot.classList.toggle('speaking', !!isSpeaking);
+    };
+  })();
+
+  const COPY_ICON = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+  const CHECK_ICON = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>';
+
+  // Reveals bot text a few characters at a time (typewriter effect) instead
+  // of dumping it in all at once. Duration is capped regardless of length so
+  // long replies don't take forever to finish appearing.
+  function typeText(el, fullText) {
+    const cursor = document.createElement('span');
+    cursor.className = 'chat-type-cursor';
+    const maxDurationMs = 1400;
+    const stepMs = 16;
+    const totalSteps = Math.max(1, Math.round(maxDurationMs / stepMs));
+    const charsPerStep = Math.max(1, Math.ceil(fullText.length / totalSteps));
+    let i = 0;
+    el.textContent = '';
+    el.appendChild(cursor);
+    const timer = setInterval(function() {
+      i = Math.min(fullText.length, i + charsPerStep);
+      el.textContent = fullText.slice(0, i);
+      el.appendChild(cursor);
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+      if (i >= fullText.length) {
+        clearInterval(timer);
+        cursor.remove();
+      }
+    }, stepMs);
+  }
+
+  function addMessage(role, text) {
+    const row = document.createElement('div');
+    row.className = 'chat-msg chat-msg-' + role;
+    const bubble = document.createElement('div');
+    bubble.className = 'chat-bubble';
+    row.appendChild(bubble);
+
+    if (role === 'bot' && !reduceMotion) {
+      typeText(bubble, text);
+    } else {
+      bubble.textContent = text;
+    }
+
+    if (role === 'bot') {
+      speak(text); // reads the reply aloud if sound is turned on
+      const copyBtn = document.createElement('button');
+      copyBtn.type = 'button';
+      copyBtn.className = 'chat-copy-btn';
+      copyBtn.setAttribute('aria-label', 'Copy reply');
+      copyBtn.innerHTML = COPY_ICON;
+      copyBtn.addEventListener('click', function() {
+        if (!navigator.clipboard) return;
+        navigator.clipboard.writeText(text).then(function() {
+          copyBtn.classList.add('copied');
+          copyBtn.innerHTML = CHECK_ICON;
+          setTimeout(function() {
+            copyBtn.classList.remove('copied');
+            copyBtn.innerHTML = COPY_ICON;
+          }, 1600);
+        }).catch(function() { /* clipboard permission denied — ignore */ });
+      });
+      row.appendChild(copyBtn);
+    }
+
+    messagesEl.appendChild(row);
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+    return row;
+  }
+
+  function showTyping() {
+    const row = document.createElement('div');
+    row.className = 'chat-msg chat-msg-bot chat-typing-row';
+    row.innerHTML = '<div class="chat-bubble chat-typing"><span></span><span></span><span></span></div>';
+    messagesEl.appendChild(row);
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+    return row;
+  }
+
+  async function sendMessage(text) {
+    if (!text || !text.trim() || sending) return;
+    sending = true;
+    if (suggestions) suggestions.style.display = 'none';
+    addMessage('user', text);
+    playBlip(880, 0.08);
+    history.push({ role: 'user', text: text });
+    const typingRow = showTyping();
+    if (window.setMascotTalking) window.setMascotTalking(true);
+    const startedAt = (window.performance && performance.now) ? performance.now() : Date.now();
+
+    try {
+      if (!CHAT_API_URL || CHAT_API_URL.indexOf('your-worker-subdomain') !== -1) {
+        throw new Error('Chat endpoint not configured yet');
+      }
+      const res = await fetch(CHAT_API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: text, history: history.slice(-10) })
+      });
+      if (!res.ok) throw new Error('Bad response from chat API');
+      const data = await res.json();
+      typingRow.remove();
+      const reply = (data && data.reply) ? data.reply : "Sorry, I couldn't generate a reply just then — feel free to browse the portfolio or email manishsonawane19@gmail.com directly.";
+      addMessage('bot', reply);
+      playBlip(520, 0.1);
+      history.push({ role: 'assistant', text: reply });
+
+      const elapsedMs = Math.round(((window.performance && performance.now) ? performance.now() : Date.now()) - startedAt);
+      const modelLabel = (data && data.model) ? data.model.split('/').pop().replace(':free', '').toUpperCase() : '—';
+      setHud('MODEL: ' + modelLabel + ' · ' + elapsedMs + 'ms');
+    } catch (err) {
+      typingRow.remove();
+      addMessage('bot', "I'm having trouble reaching the AI right now. In the meantime, feel free to explore the portfolio or email Manish directly at manishsonawane19@gmail.com.");
+      setHud('MODEL: — · offline');
+    } finally {
+      sending = false;
+      if (window.setMascotTalking) window.setMascotTalking(false);
+    }
+  }
+
+  form.addEventListener('submit', function(e) {
+    e.preventDefault();
+    const text = input.value;
+    input.value = '';
+    sendMessage(text);
+  });
+
+  if (suggestions) {
+    suggestions.querySelectorAll('.chat-suggestion-chip').forEach(function(chip) {
+      chip.addEventListener('click', function() { sendMessage(chip.textContent); });
+    });
+  }
+})();
+
+// ========== GATEWAY CARD 3D TILT ==========
+// Mouse-tracked parallax tilt on the "Chat with AI" / "View Portfolio" cards.
+// Skipped on touch devices (no meaningful hover) and when the visitor prefers
+// reduced motion.
+(function() {
+  const supportsHover = window.matchMedia('(hover: hover) and (pointer: fine)').matches;
+  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (!supportsHover || reduceMotion) return;
+
+  document.querySelectorAll('.gateway-card').forEach(function(card) {
+    function onMove(e) {
+      const rect = card.getBoundingClientRect();
+      const px = (e.clientX - rect.left) / rect.width;
+      const py = (e.clientY - rect.top) / rect.height;
+      const rotateY = (px - 0.5) * 14;
+      const rotateX = (0.5 - py) * 14;
+      card.style.transition = 'none';
+      card.style.transform =
+        'perspective(800px) rotateX(' + rotateX.toFixed(2) + 'deg) rotateY(' + rotateY.toFixed(2) + 'deg) translateY(-4px) scale(1.015)';
+    }
+    function onLeave() {
+      card.style.transition = 'transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1)';
+      card.style.transform = '';
+    }
+    card.addEventListener('mousemove', onMove);
+    card.addEventListener('mouseleave', onLeave);
+  });
 })();
 
 // ========== CURSOR ==========
