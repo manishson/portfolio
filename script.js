@@ -254,7 +254,7 @@
   window.initPortfolioChat = function() {
     if (initialized) return;
     initialized = true;
-    addMessage('bot', "Hey! I'm an AI assistant briefed on Manish's experience, projects, and skills. Ask me anything, or tap a suggestion below.");
+    addMessage('bot', "Hey, I'm Manish! Ask me about my experience, projects, or skills — or tap a suggestion below.");
 
     // One-shot "power on" flicker — only the first time chat opens each
     // session, so repeat opens later don't replay it.
@@ -278,12 +278,12 @@
     if (!mascot) return;
 
     const funFacts = [
-      "Fun fact: Sentinel Bot handles thousands of daily requests at ~95% intent accuracy.",
-      "Manish has shipped computer vision models for real-time weapon & face detection.",
-      "92% accuracy classifying 10,000+ legal documents — that was the Property Insights Automator.",
-      "Manish builds MCP tools that let LLMs talk to 50+ enterprise services.",
+      "Fun fact: Sentinel Bot, which I built, handles thousands of daily requests at ~95% intent accuracy.",
+      "I've shipped computer vision models for real-time weapon & face detection.",
+      "92% accuracy classifying 10,000+ legal documents — that was my Property Insights Automator.",
+      "I build MCP tools that let LLMs talk to 50+ enterprise services.",
       "5+ years across LLMs, computer vision, NLP, and MLOps.",
-      "Ask me about LangGraph, RAG, or Manish's AWS/GCP/Azure work!"
+      "Ask me about LangGraph, RAG, or my AWS/GCP/Azure work!"
     ];
     let bubbleTimer = null;
 
@@ -330,12 +330,19 @@
       if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); playFunFact(); }
     });
 
-    window.setMascotTalking = function(isTalking) {
-      mascot.classList.toggle('talking', !!isTalking);
+    // "Thinking" — spins the ring while waiting on the API, mouth stays
+    // still (doesn't look like it's talking before it has an answer).
+    window.setMascotThinking = function(isThinking) {
+      mascot.classList.toggle('thinking', !!isThinking);
     };
-    // Separate from "talking" (which also spins the thinking ring during the
-    // network wait) — "speaking" just flaps the mouth while text-to-speech
-    // is actually reading a reply out loud.
+    // "Reading" — brief eye-scan once the reply bubble appears, so the
+    // mascot visibly reacts to its own answer even if sound is muted.
+    window.setMascotReading = function(isReading) {
+      mascot.classList.toggle('reading', !!isReading);
+    };
+    // "Speaking" — flaps the mouth while text-to-speech is actually
+    // reading a reply out loud. Independent of reading (eyes) so both can
+    // run at once when sound is on.
     window.setMascotSpeaking = function(isSpeaking) {
       mascot.classList.toggle('speaking', !!isSpeaking);
     };
@@ -347,7 +354,7 @@
   // Reveals bot text a few characters at a time (typewriter effect) instead
   // of dumping it in all at once. Duration is capped regardless of length so
   // long replies don't take forever to finish appearing.
-  function typeText(el, fullText) {
+  function typeText(el, fullText, onDone) {
     const cursor = document.createElement('span');
     cursor.className = 'chat-type-cursor';
     const maxDurationMs = 1400;
@@ -365,6 +372,7 @@
       if (i >= fullText.length) {
         clearInterval(timer);
         cursor.remove();
+        if (onDone) onDone();
       }
     }, stepMs);
   }
@@ -377,7 +385,11 @@
     row.appendChild(bubble);
 
     if (role === 'bot' && !reduceMotion) {
-      typeText(bubble, text);
+      // Mascot "reads" the reply while it types out, then settles back to idle.
+      if (window.setMascotReading) window.setMascotReading(true);
+      typeText(bubble, text, function() {
+        if (window.setMascotReading) window.setMascotReading(false);
+      });
     } else {
       bubble.textContent = text;
     }
@@ -425,7 +437,7 @@
     playBlip(880, 0.08);
     history.push({ role: 'user', text: text });
     const typingRow = showTyping();
-    if (window.setMascotTalking) window.setMascotTalking(true);
+    if (window.setMascotThinking) window.setMascotThinking(true);
     const startedAt = (window.performance && performance.now) ? performance.now() : Date.now();
 
     try {
@@ -454,7 +466,7 @@
       setHud('MODEL: — · offline');
     } finally {
       sending = false;
-      if (window.setMascotTalking) window.setMascotTalking(false);
+      if (window.setMascotThinking) window.setMascotThinking(false);
     }
   }
 
@@ -1455,6 +1467,33 @@ function fireConfetti(originEl) {
 
 // ========== MODALS ==========
 const modalData = {
+  logisync: {
+    title: 'LogiSync AI',
+    subtitle: 'Multi-Agent Supply Chain Intelligence Platform',
+    status: 'status-live',
+    statusLabel: 'In Production',
+    problem: 'Supply chain teams lose enormous time manually tracking shipments, chasing vendor replies, and escalating delays — often taking 24–48 hours to respond to an issue that needed action immediately.',
+    solution: "LogiSync AI is a production-grade multi-agent system built on LangGraph's supervisor pattern that automates shipment tracking, vendor communication, and escalation end-to-end, with human-in-the-loop review to catch anything an agent shouldn't decide alone.",
+    intendedUse: 'Logistics and supply chain operations teams needing automated shipment monitoring, vendor follow-up, and fast escalation — without losing human oversight on ambiguous or high-stakes decisions.',
+    trainingData: '12+ months of historical shipment and vendor-communication data indexed via Vertex AI Vector Search, powering the RAG Insights agent with cited, evidence-backed answers rather than free-form guesses.',
+    metrics: [{ value: '~90%', label: 'Manual Ops Reduced' }, { value: '<2 hrs', label: 'Escalation Time' }, { value: '500+', label: 'Daily Events' }],
+    architecture: [
+      "6 specialized LangGraph agents — Monitoring, Vendor Comms, Reply Parser, Escalation, RAG Insights, SAP Sync — orchestrated via LangGraph's supervisor pattern",
+      'Two-tier reply-parsing pipeline: fast regex pass first, Gemini 3.5 Flash-Lite as an LLM fallback for anything the regex can’t confidently parse',
+      'Human-in-the-loop review gate before high-impact actions, to prevent hallucination-driven errors from reaching vendors or systems',
+      'RAG-powered Insights agent over Vertex AI Vector Search, answering natural-language questions with cited evidence from shipment history',
+      'Event-driven architecture on GCP — Cloud Run, Pub/Sub, Cloud SQL — with a FastAPI backend and Firebase Auth, deployed via full CI/CD on Cloud Build'
+    ],
+    results: [
+      '~90% reduction in manual supply-chain ops effort',
+      'Escalation response time cut from 24–48 hours to under 2 hours',
+      'Processes 500+ shipment events daily in production',
+      'RAG Insights agent answers natural-language queries over 12+ months of shipment history with cited evidence',
+      'Human-in-the-loop review keeps agents from taking unchecked high-stakes actions'
+    ],
+    limitations: "The Reply Parser's LLM fallback is only invoked when the faster regex pass is inconclusive, which keeps cost/latency down but means parsing quality on very unusual vendor reply formats still depends on that fallback. High-impact actions intentionally route through human review rather than fully autonomous execution.",
+    stack: ['LangGraph', 'Gemini 3.5 Flash-Lite', 'Vertex AI Vector Search', 'FastAPI', 'GCP Cloud Run', 'Pub/Sub', 'Cloud SQL', 'Firebase Auth', 'Cloud Build CI/CD']
+  },
   sentinel: {
     title: 'Sentinel Bot',
     subtitle: 'AI-Powered Enterprise Automation Assistant',

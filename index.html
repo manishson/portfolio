@@ -135,7 +135,7 @@
           <ellipse class="mascot-mouth-open" cx="60" cy="81" rx="9" ry="7" fill="#fff"/>
         </svg>
       </div>
-      <div class="chat-mascot-bubble" id="chatMascotBubble">Hi, I'm Manish's AI buddy 👋 Ask me anything, or tap me!</div>
+      <div class="chat-mascot-bubble" id="chatMascotBubble">Hi, I'm Manish 👋 Ask me anything, or tap me!</div>
     </div>
   </div>
   <div class="chat-suggestions" id="chatSuggestions">
@@ -606,6 +606,69 @@
       <div class="project-card glass reveal featured-project">
         <div class="project-image-wrapper">
           <div class="project-status status-live"><span class="status-dot"></span>In Production</div>
+          <div class="project-image-bg" style="background:linear-gradient(135deg,#2563eb 0%,#7c3aed 50%,#db2777 100%)">
+            <div class="project-tech-visual">
+              <div class="tech-arch">
+                <div class="arch-node top">LangGraph</div>
+                <div class="arch-row mid">
+                  <div class="arch-node">Gemini 3.5</div>
+                  <div class="arch-center">🚚</div>
+                  <div class="arch-node">FastAPI</div>
+                </div>
+                <div class="arch-row bot">
+                  <div class="arch-node sm">Cloud Run</div>
+                  <div class="arch-node sm">Pub/Sub</div>
+                  <div class="arch-node sm">Cloud SQL</div>
+                </div>
+              </div>
+              <svg class="arch-flow-svg" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+                <g class="arch-flow-lines">
+                  <path id="flowPathTop2" d="M50,50 L50,14" />
+                  <path id="flowPathLeft2" d="M50,50 L20,50" />
+                  <path id="flowPathRight2" d="M50,50 L80,50" />
+                  <path id="flowPathBotLeft2" d="M50,50 L16,86" />
+                  <path id="flowPathBotCenter2" d="M50,50 L50,86" />
+                  <path id="flowPathBotRight2" d="M50,50 L84,86" />
+                </g>
+                <circle r="1.6" class="arch-flow-dot"><animateMotion dur="2.2s" begin="0s" repeatCount="indefinite" rotate="auto"><mpath href="#flowPathTop2"/></animateMotion></circle>
+                <circle r="1.6" class="arch-flow-dot"><animateMotion dur="2.2s" begin="0.35s" repeatCount="indefinite" rotate="auto"><mpath href="#flowPathLeft2"/></animateMotion></circle>
+                <circle r="1.6" class="arch-flow-dot"><animateMotion dur="2.2s" begin="0.7s" repeatCount="indefinite" rotate="auto"><mpath href="#flowPathRight2"/></animateMotion></circle>
+                <circle r="1.6" class="arch-flow-dot"><animateMotion dur="2.2s" begin="1.05s" repeatCount="indefinite" rotate="auto"><mpath href="#flowPathBotLeft2"/></animateMotion></circle>
+                <circle r="1.6" class="arch-flow-dot"><animateMotion dur="2.2s" begin="1.4s" repeatCount="indefinite" rotate="auto"><mpath href="#flowPathBotCenter2"/></animateMotion></circle>
+                <circle r="1.6" class="arch-flow-dot"><animateMotion dur="2.2s" begin="1.75s" repeatCount="indefinite" rotate="auto"><mpath href="#flowPathBotRight2"/></animateMotion></circle>
+              </svg>
+            </div>
+          </div>
+          <div class="project-overlay">
+            <button class="project-link-btn" onclick="openModal('logisync')">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              View Details
+            </button>
+          </div>
+        </div>
+        <div class="project-body">
+          <div class="project-meta">
+            <span class="project-tag featured">Featured</span>
+            <span class="project-tag">Multi-Agent AI</span>
+            <span class="project-tag">Supply Chain</span>
+          </div>
+          <h3 class="project-title">LogiSync AI</h3>
+          <p class="project-subtitle">Multi-Agent Supply Chain Intelligence Platform</p>
+          <p class="project-desc">Production-grade multi-agent system on LangGraph's supervisor pattern automating shipment tracking, vendor communication, and escalation workflows — cutting manual ops effort ~90% and escalation response time from 24–48 hrs to under 2 hrs.</p>
+          <div class="project-metrics">
+            <div class="metric"><span class="metric-value">~90%</span><span class="metric-label">Ops Effort Cut</span></div>
+            <div class="metric"><span class="metric-value">&lt;2hrs</span><span class="metric-label">Escalation Time</span></div>
+            <div class="metric"><span class="metric-value">500+</span><span class="metric-label">Daily Events</span></div>
+          </div>
+          <div class="project-stack">
+            <span class="stack-tag">LangGraph</span><span class="stack-tag">Vertex AI</span><span class="stack-tag">Gemini 3.5 Flash-Lite</span><span class="stack-tag">Cloud Run</span><span class="stack-tag">FastAPI</span><span class="stack-tag">Firebase Auth</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="project-card glass reveal">
+        <div class="project-image-wrapper">
+          <div class="project-status status-live"><span class="status-dot"></span>In Production</div>
           <div class="project-image-bg" style="background:linear-gradient(135deg,#4f46e5 0%,#7c3aed 50%,#2563eb 100%)">
             <div class="project-tech-visual">
               <div class="tech-arch">
@@ -648,7 +711,6 @@
         </div>
         <div class="project-body">
           <div class="project-meta">
-            <span class="project-tag featured">Featured</span>
             <span class="project-tag">Enterprise AI</span>
             <span class="project-tag">Agentic</span>
           </div>

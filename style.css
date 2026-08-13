@@ -1228,8 +1228,7 @@ button { border: none; background: none; font-family: inherit; cursor: pointer; 
   display: flex; flex-direction: column; align-items: center; gap: 0.7rem;
   padding: 1.5rem 0 1.75rem;
   margin: -1.75rem -1.5rem 0.4rem;
-  background: linear-gradient(180deg, var(--bg) 0%, rgba(var(--accent-rgb),0.03) 55%, transparent 100%);
-  backdrop-filter: blur(14px);
+  background: linear-gradient(180deg, rgba(var(--bg-rgb),0.55) 0%, rgba(var(--bg-rgb),0.25) 40%, transparent 100%);
 }
 @media (max-width: 480px) {
   .chat-mascot-svg { width: 96px; height: 96px; }
@@ -1272,30 +1271,44 @@ button { border: none; background: none; font-family: inherit; cursor: pointer; 
 .mascot-pupil { transition: transform 0.12s ease-out; }
 
 .mascot-mouth-open { opacity: 0; transform-origin: 60px 81px; }
-/* Mouth flaps both while composing a reply (.talking, network wait) and
-   while text-to-speech is actually reading it out loud (.speaking). */
-#chatMascot.talking .mascot-mouth-closed,
-#chatMascot.talking .mascot-mouth-open,
+/* Mouth only flaps while text-to-speech is actually reading a reply out
+   loud (.speaking) — NOT while merely waiting on the API (.thinking), so
+   the mascot doesn't look like it's talking before it has anything to say. */
 #chatMascot.speaking .mascot-mouth-closed,
 #chatMascot.speaking .mascot-mouth-open {
   animation-duration: 0.32s; animation-iteration-count: infinite; animation-timing-function: steps(1);
 }
-#chatMascot.talking .mascot-mouth-closed,
 #chatMascot.speaking .mascot-mouth-closed { animation-name: mascotMouthClosed; }
-#chatMascot.talking .mascot-mouth-open,
 #chatMascot.speaking .mascot-mouth-open { animation-name: mascotMouthOpen; }
 @keyframes mascotMouthClosed { 0%, 45% { opacity: 1; } 50%, 100% { opacity: 0; } }
 @keyframes mascotMouthOpen { 0%, 45% { opacity: 0; } 50%, 100% { opacity: 1; } }
 
 /* "Thinking" progress ring — spins around the mascot while waiting on a
-   reply, layered on top of the idle halo (::before) via ::after. */
-#chatMascot.talking::after {
+   reply, layered on top of the idle halo (::before) via ::after. Mouth
+   stays still during this state; only the ring signals "processing". */
+#chatMascot.thinking::after {
   content: ''; position: absolute; inset: -20px; border-radius: 50%;
   border: 2.5px solid transparent;
   border-top-color: var(--accent); border-right-color: var(--accent);
   animation: mascotThinkSpin 0.9s linear infinite;
 }
 @keyframes mascotThinkSpin { to { transform: rotate(360deg); } }
+
+/* "Reading" — a quick eye-scan once the reply bubble appears and is being
+   typed out, so the mascot visibly reacts to its own answer even when
+   text-to-speech is muted. Overrides the mouse-follow inline transform on
+   .mascot-pupil for the duration of the class (CSS animation wins over
+   inline style), then hands control back when the class is removed. */
+#chatMascot.reading .mascot-pupil {
+  animation: mascotReadScan 0.7s ease-in-out infinite;
+}
+@keyframes mascotReadScan {
+  0%   { transform: translate(-3px, -1px); }
+  25%  { transform: translate(3px, -1px); }
+  50%  { transform: translate(-2.5px, 1px); }
+  75%  { transform: translate(2.5px, 1px); }
+  100% { transform: translate(-3px, -1px); }
+}
 
 .chat-mascot-bubble {
   max-width: 240px; text-align: center; font-size: 0.78rem; line-height: 1.4;
